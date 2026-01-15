@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+*.log
+registro_ml_sectores.csv
+usuarios_autorizados.json
+.DS_Store
