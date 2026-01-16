@@ -1,10 +1,10 @@
-# fly.toml app configuration file generated for investfred-bot-tqfk8q on 2026-01-15T21:40:10Z
+# fly.toml app configuration file generated for investfred-bot on 2026-01-16T00:43:02Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'investfred-bot-tqfk8q'
-primary_region = 'ams'
+app = 'investfred-bot'
+primary_region = 'iad'
 
 [build]
   builder = 'paketobuildpacks/builder:base'
@@ -24,4 +24,4 @@ primary_region = 'ams'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 256
+  memory_mb = 1024
