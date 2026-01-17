@@ -1,6 +1,9 @@
-pyTelegramBotAPI
+python-telegram-bot
 yfinance
 pandas
+pandas_ta
 matplotlib
+scikit-learn
+textblob
+requests
 Flask
-
