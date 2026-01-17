@@ -1,5 +1,4 @@
+pyTelegramBotAPI
 yfinance
 pandas
-ccxt
-python-telegram-bot
 matplotlib
