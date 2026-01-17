@@ -1,15 +1,15 @@
 import yfinance as yf
 import pandas as pd
-import ccxt
 import telebot
 import matplotlib.pyplot as plt
 import io
 import os
+import time
 
-# CONFIGURACIÓN DE CRIPTO Y TELEGRAM
-# En Fly.io, estos valores se toman de los "Secrets" que configuraste
-TOKEN = os.getenv('TELEGRAM_TOKEN', '8575636448:AAH7VP5H6xHiQbuoGh1vn1xrpYbSAZbrgxQ')
-CHAT_ID = os.getenv('CHAT_ID', '5239530286')
+# --- CONFIGURACIÓN DE CRIPTO Y TELEGRAM ---
+# Se usan exactamente los nombres de tus Secrets en Fly.io
+TOKEN = os.getenv('telegram_token') # Coincide con tu captura de Secrets
+CHAT_ID = os.getenv('chat_ID')      # Coincide con tu captura de Secrets
 bot = telebot.TeleBot(TOKEN)
 
 def calcular_rsi_manual(series, window=14):
@@ -27,20 +27,13 @@ def obtener_analisis(symbol="BTC-USD"):
         if df.empty:
             return None
         
-        # CORRECCIÓN DE SCALARS: Asegurar que los datos sean planos para los gráficos
+        # Asegurar que los datos sean planos para los gráficos
         df_close = df['Close'].squeeze().astype(float)
         
         # CÁLCULO DE INDICADORES
-        # 1. RSI (Manual)
         df['RSI'] = calcular_rsi_manual(df_close)
         
-        # 2. MACD (Manual)
-        ema12 = df_close.ewm(span=12, adjust=False).mean()
-        ema26 = df_close.ewm(span=26, adjust=False).mean()
-        df['MACD'] = ema12 - ema26
-        df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-
-        # CREACIÓN DEL GRÁFICO PROFESIONAL
+        # CREACIÓN DEL GRÁFICO
         plt.figure(figsize=(12, 8))
         
         # Subtrama 1: Precio
@@ -87,5 +80,13 @@ def enviar_señal():
 
 if __name__ == "__main__":
     print("🚀 INVESTFRED v16.9: Parche RSI Manual y Gráficos Activado...")
-    enviar_señal() # Envía una señal al arrancar
-
+    
+    # BUCLE INFINITO: Esto evita que el bot se apague y crashee en Fly.io
+    while True:
+        try:
+            enviar_señal()
+            print("✅ Señal enviada con éxito. Esperando 15 minutos...")
+            time.sleep(900) # Espera 15 minutos para la siguiente señal
+        except Exception as e:
+            print(f"Error en el ciclo: {e}")
+            time.sleep(60) # Si falla, reintenta en 1 minuto
