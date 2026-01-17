@@ -1,99 +1,149 @@
 import yfinance as yf
+import pandas_ta as ta
+import asyncio
 import pandas as pd
-import telebot
+import os
+import requests
 import matplotlib.pyplot as plt
 import io
-import os
 import time
+from telegram import Bot
+from datetime import datetime
+from sklearn.ensemble import RandomForestClassifier
 from flask import Flask
 from threading import Thread
+from textblob import TextBlob
+import warnings
 
-# --- 1. CONFIGURACIÓN DE CRIPTO Y TELEGRAM ---
+warnings.filterwarnings("ignore")
+
+# --- CONFIGURACIÓN ---
 TOKEN = os.getenv('telegram_token')
 CHAT_ID = os.getenv('chat_ID')
-bot = telebot.TeleBot(TOKEN)
+FMP_API_KEY = os.getenv('fmp_api_key') # Agrégala a Environment en Render
+bot = Bot(token=TOKEN)
 
-# --- 2. SERVIDOR WEB PARA RENDER (FLASK) ---
+# --- SERVIDOR WEB PARA ESTABILIDAD EN RENDER ---
 app = Flask('')
-
 @app.route('/')
-def home():
-    return "Bot is alive!"
+def home(): return "INVESTFRED AI is running!"
 
-def run_flask():
+def run_web():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
-# --- 3. FUNCIONES DE ANÁLISIS ---
-def calcular_rsi_manual(series, window=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
-
-def obtener_analisis(symbol="BTC-USD"):
+# --- ANÁLISIS DE SENTIMIENTO REAL ---
+def obtener_sentimiento(ticker):
     try:
-        df = yf.download(symbol, period="1d", interval="15m")
-        if df.empty:
-            return None
+        url = f"https://financialmodelingprep.com/api/v3/stock_news?tickers={ticker}&limit=5&apikey={FMP_API_KEY}"
+        response = requests.get(url)
+        news = response.json()
+        if not news: return 0
         
-        df_close = df['Close'].squeeze().astype(float)
-        df['RSI'] = calcular_rsi_manual(df_close)
-        
-        plt.figure(figsize=(12, 8))
+        # Analiza el título de las noticias
+        sentiment_score = 0
+        for item in news:
+            analysis = TextBlob(item['title'])
+            sentiment_score += analysis.sentiment.polarity
+        return (sentiment_score / len(news)) * 0.1 # Impacto moderado en la probabilidad
+    except:
+        return 0
+
+# --- MOTOR DE MACHINE LEARNING + GRÁFICO ---
+def analizar_y_graficar(df, ticker, sector, prob):
+    try:
+        # Generar gráfico similar al bot anterior
+        plt.figure(figsize=(10, 6))
         plt.subplot(2, 1, 1)
-        plt.plot(df_close.index, df_close, label='Precio Close', color='blue')
-        plt.title(f"Análisis Técnico Real-time: {symbol}")
-        plt.legend()
+        plt.plot(df.index, df['Close'], color='blue', label='Precio')
+        plt.title(f"AI Signal: {ticker} ({sector}) - Prob: {prob:.1%}")
         plt.grid(True)
-
+        
         plt.subplot(2, 1, 2)
-        plt.plot(df.index, df['RSI'], label='RSI (14)', color='purple')
-        plt.axhline(70, linestyle='--', color='red', alpha=0.5)
-        plt.axhline(30, linestyle='--', color='green', alpha=0.5)
-        plt.ylim(0, 100)
-        plt.legend()
+        rsi = ta.rsi(df['Close'], length=14)
+        plt.plot(df.index, rsi, color='purple', label='RSI')
+        plt.axhline(70, color='red', linestyle='--', alpha=0.5)
+        plt.axhline(30, color='green', linestyle='--', alpha=0.5)
         plt.grid(True)
-
+        
         buf = io.BytesIO()
         plt.savefig(buf, format='png')
         buf.seek(0)
         plt.close()
-        
-        ultimo_rsi = df['RSI'].iloc[-1]
-        señal = "NEUTRAL ⚪"
-        if ultimo_rsi < 35: señal = "COMPRA (RSI Bajo) 🟢"
-        elif ultimo_rsi > 65: señal = "VENTA (RSI Alto) 🔴"
-        
-        mensaje = f"🚀 **SEÑAL {symbol}**\n\n💰 Precio: {df_close.iloc[-1]:.2f}\n📊 RSI: {ultimo_rsi:.2f}\n⚡ Acción: {señal}"
-        return buf, mensaje
-
-    except Exception as e:
-        print(f"Error en análisis: {e}")
+        return buf
+    except:
         return None
 
-def enviar_señal():
-    resultado = obtener_analisis()
-    if resultado:
-        img, texto = resultado
-        bot.send_photo(CHAT_ID, img, caption=texto, parse_mode="Markdown")
+def predecir_tendencia(df, ticker):
+    try:
+        data = df.copy()
+        data['Target'] = (data['Close'].shift(-1) > data['Close']).astype(int)
+        data['RSI'] = ta.rsi(data['Close'], length=14)
+        data['Vol_Rel'] = data['Volume'] / data['Volume'].rolling(20).mean()
+        data = data.dropna()
+        
+        if len(data) < 30: return 0.5
+        
+        X = data[['RSI', 'Vol_Rel']]
+        y = data['Target']
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model.fit(X[:-1], y[:-1])
+        
+        prob_base = model.predict_proba(X.tail(1))[0][1]
+        sentimiento = obtener_sentimiento(ticker)
+        return prob_base + sentimiento
+    except: return 0.5
 
-# --- 4. BLOQUE PRINCIPAL ---
-if __name__ == "__main__":
-    print("🚀 INVESTFRED v16.9: Servidor Web y Bot Iniciando...")
-    
-    # Iniciar servidor web en segundo plano
-    Thread(target=run_flask).start()
-    
-    # Bucle principal del bot
+async def procesar_activo(ticker, sector):
+    try:
+        # Cambiamos a intervalo de 1 hora para Penny Stocks (más sensible)
+        df = yf.download(ticker, period="1mo", interval="60m", progress=False)
+        if df is None or df.empty: return
+        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+        
+        prob = predecir_tendencia(df, ticker)
+        
+        if prob > 0.70:
+            precio = float(df['Close'].iloc[-1])
+            img = analizar_y_graficar(df, ticker, sector, prob)
+            msg = (f"🧠 **IA + SENTIMENT SIGNAL**\n"
+                   f"Activo: `{ticker}` | Sector: {sector}\n"
+                   f"Precio: ${precio:.2f}\n"
+                   f"Probabilidad IA: {prob:.1%}")
+            
+            if img:
+                await bot.send_photo(chat_id=CHAT_ID, photo=img, caption=msg, parse_mode='Markdown')
+            else:
+                await bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode='Markdown')
+    except Exception as e:
+        print(f"Error en {ticker}: {e}")
+
+async def main_loop():
+    print("🚀 INVESTFRED AI v14.0: Iniciando ciclo estable...")
     while True:
         try:
-            enviar_señal()
-            print("✅ Señal enviada con éxito. Esperando 15 minutos...")
-            time.sleep(900) # 15 minutos evita bloqueos de Yahoo Finance
+            # Búsqueda en FMP (Penny Stocks)
+            url_fmp = f"https://financialmodelingprep.com/api/v3/stock_screener?priceLowerThan=5&volumeMoreThan=1000000&limit=10&apikey={FMP_API_KEY}"
+            data_fmp = requests.get(url_fmp).json()
+            activos = [(item['symbol'], item.get('sector', 'Penny Stock')) for item in data_fmp]
+            
+            # Activos Globales
+            globales = [("BTC-USD", "Cripto"), ("ETH-USD", "Cripto"), ("GC=F", "Oro")]
+            
+            for t, s in activos + globales:
+                await procesar_activo(t, s)
+                await asyncio.sleep(5) # Evita bloqueos de Yahoo
+            
+            print("✅ Ciclo completado. Esperando 1 hora...")
+            await asyncio.sleep(3600)
         except Exception as e:
-            print(f"Error en el ciclo: {e}")
-            time.sleep(60) # Reintento en 1 minuto si hay error
+            print(f"Error: {e}")
+            await asyncio.sleep(300)
+
+if __name__ == "__main__":
+    # Iniciar servidor web para que Render vea el puerto 8080
+    Thread(target=run_web).start()
+    # Iniciar bot asíncrono
+    asyncio.run(main_loop())
 
 
