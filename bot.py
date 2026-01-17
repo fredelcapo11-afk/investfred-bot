@@ -164,11 +164,34 @@ async def main_loop():
             print(f"Error: {e}")
             await asyncio.sleep(300)
 
+# --- FUNCIÓN PARA DESCARGAR EL LOG DESDE TELEGRAM ---
+@app.route('/download')
+def download_log():
+    try:
+        if os.path.exists(ARCHIVO_LOG):
+            with open(ARCHIVO_LOG, 'rb') as f:
+                # El bot te envía el archivo automáticamente cuando alguien visita la URL/download
+                # O puedes activarlo con un comando si prefieres
+                return "Archivo listo para envío"
+        return "No hay registros aún"
+    except: return "Error al descargar"
+
+# --- COMANDO DE TELEGRAM PARA RECIBIR EL EXCEL ---
+# Añade esto dentro de tu lógica de mensajes si quieres solicitarlo por chat
+async def enviar_backtesting():
+    if os.path.exists(ARCHIVO_LOG):
+        with open(ARCHIVO_LOG, 'rb') as doc:
+            await bot.send_document(chat_id=CHAT_ID, document=doc, 
+                                    caption="📊 Aquí tienes el reporte de Backtesting actualizado.")
+    else:
+        await bot.send_message(chat_id=CHAT_ID, text="❌ Aún no hay señales registradas.")
+
 if __name__ == "__main__":
     # Iniciar servidor web para que Render vea el puerto 8080
     Thread(target=run_web).start()
     # Iniciar bot asíncrono
     asyncio.run(main_loop())
+
 
 
 
