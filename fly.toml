@@ -1,10 +1,11 @@
-
-
-app = 'investfred-bot'
-primary_region = 'iad'
+app = 'investfred-bot-tqfk8q'
+primary_region = 'ams'
 
 [build]
   builder = 'paketobuildpacks/builder:base'
+
+[processes]
+  app = 'python bot.py'
 
 
 
