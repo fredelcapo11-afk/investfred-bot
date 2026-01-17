@@ -100,16 +100,32 @@ async def procesar_activo(ticker, sector):
         df = yf.download(ticker, period="1mo", interval="60m", progress=False)
         if df is None or df.empty: return
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-        
+
         prob = predecir_tendencia(df, ticker)
+        
+        # Cálculo de anomalía de volumen (Detecta ballenas)
+        vol_actual = df['Volume'].iloc[-1]
+        vol_promedio = df['Volume'].rolling(20).mean().iloc[-1]
+        vol_relativo = vol_actual / vol_promedio
         
         if prob > 0.70:
             precio = float(df['Close'].iloc[-1])
             img = analizar_y_graficar(df, ticker, sector, prob)
+            
+            # Etiqueta de volumen para el mensaje
+            nota_vol = "Normal"
+            if vol_relativo > 3.0: nota_vol = "⚠️ BALLENA DETECTADA (Vol x3)"
+            elif vol_relativo > 1.5: nota_vol = "Pico de Interés (Vol x1.5)"
+            
             msg = (f"🧠 **IA + SENTIMENT SIGNAL**\n"
                    f"Activo: `{ticker}` | Sector: {sector}\n"
                    f"Precio: ${precio:.2f}\n"
-                   f"Probabilidad IA: {prob:.1%}")
+                   f"Probabilidad IA: {prob:.1%}\n"
+                   f"Flujo de Órdenes: `{nota_vol}`")
+            
+            if img:
+                await bot.send_photo(chat_id=CHAT_ID, photo=img, caption=msg, parse_mode='Markdown')
+            
             
             if img:
                 await bot.send_photo(chat_id=CHAT_ID, photo=img, caption=msg, parse_mode='Markdown')
@@ -128,7 +144,15 @@ async def main_loop():
             activos = [(item['symbol'], item.get('sector', 'Penny Stock')) for item in data_fmp]
             
             # Activos Globales
-            globales = [("BTC-USD", "Cripto"), ("ETH-USD", "Cripto"), ("GC=F", "Oro")]
+            globales = [("BTC-USD", "Cripto"), 
+                ("ETH-USD", "Cripto"), 
+                ("ADA-USD", "Cripto"),
+                ("NEAR-USD", "Cripto"),
+                ("RIO-USD", "Cripto"),
+                ("GC=F", "Oro"),
+                ("SI=F", "Plata"),
+                ("HG=F", "Cobre"),
+                ("CL=F", "Petroleo Crudo")]
             
             for t, s in activos + globales:
                 await procesar_activo(t, s)
@@ -145,5 +169,6 @@ if __name__ == "__main__":
     Thread(target=run_web).start()
     # Iniciar bot asíncrono
     asyncio.run(main_loop())
+
 
 
