@@ -95,6 +95,7 @@ def predecir_tendencia(df, ticker):
     except: return 0.5
 
 async def procesar_activo(ticker, sector):
+    print(f"🔍 Analizando ahora: {ticker} ({sector})...")
     try:
         # Cambiamos a intervalo de 1 hora para Penny Stocks (más sensible)
         df = yf.download(ticker, period="1mo", interval="60m", progress=False)
@@ -191,6 +192,7 @@ if __name__ == "__main__":
     Thread(target=run_web).start()
     # Iniciar bot asíncrono
     asyncio.run(main_loop())
+
 
 
 
