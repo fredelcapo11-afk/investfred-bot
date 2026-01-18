@@ -108,7 +108,7 @@ async def procesar_activo(ticker, sector):
         vol_promedio = df['Volume'].rolling(20).mean().iloc[-1]
         vol_relativo = vol_actual / vol_promedio
         
-        if prob > 0.70:
+        if prob > 0.05:
             precio = float(df['Close'].iloc[-1])
             img = analizar_y_graficar(df, ticker, sector, prob)
             
@@ -191,6 +191,7 @@ if __name__ == "__main__":
     Thread(target=run_web).start()
     # Iniciar bot asíncrono
     asyncio.run(main_loop())
+
 
 
 
