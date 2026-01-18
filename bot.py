@@ -704,4 +704,35 @@ if __name__ == "__main__":
     print("\n🎯 CONFIGURACIÓN ESPECÍFICA:")
     print("• CRIPTO RWA: BTC, ETH, BNB, ADA, SOL, LINK, AAVE, MKR, COMP, SNX")
     print("• COMMODITIES: Oro (GC=F), Plata (SI=F), Cobre (HG=F), Petróleo (CL=F), Gas (NG=F), Paladio (PA=F)")
-
+    print("• COLOMBIA: EC (Ecopetrol), ISA")
+    print("• PENNY STOCKS: Búsqueda dinámica según movimiento (sin lista fija)")
+    print("• ETF: XLF (Financial Sector)")
+    print("• HORARIO: Automático según NY y Colombia")
+    print("=" * 60)
+    
+    # Verificar variables
+    if not TOKEN or not CHAT_ID:
+        print("❌ ERROR: Faltan telegram_token o chat_ID")
+        exit(1)
+    
+    # Iniciar servidor web
+    Thread(target=run_web, daemon=True).start()
+    print("🌐 Servidor web iniciado en puerto 8080")
+    
+    # Ejecutar bot
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Inicio optimizado
+        loop.run_until_complete(inicio_optimizado())
+        time.sleep(3)
+        
+        # Bucle principal optimizado
+        print("\n🔄 Iniciando ciclo principal optimizado...")
+        loop.run_until_complete(main_loop_optimizado())
+        
+    except KeyboardInterrupt:
+        print("\n🛑 Bot detenido manualmente")
+    except Exception as e:
+        print(f"💥 Error crítico: {e}")
