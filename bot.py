@@ -187,11 +187,28 @@ async def enviar_backtesting():
     else:
         await bot.send_message(chat_id=CHAT_ID, text="❌ Aún no hay señales registradas.")
 
+# --- PRUEBA DE COMUNICACIÓN DIRECTA ---
+async def test_telegram():
+    try:
+        print("📡 Intentando enviar mensaje de prueba a Telegram...")
+        await bot.send_message(chat_id=CHAT_ID, text="✅ CONEXIÓN EXITOSA: El bot puede escribirte.")
+        print("✅ Mensaje enviado con éxito.")
+    except Exception as e:
+        print(f"❌ ERROR DE TELEGRAM: {e}")
+
+# Modifica tu bloque final así:
+if __name__ == "__main__":
+    Thread(target=run_web).start()
+    loop = asyncio.get_event_loop()
+    loop.create_task(test_telegram()) # <--- ESTO FORZARÁ EL MENSAJE
+    loop.run_until_complete(main_loop())
+
 if __name__ == "__main__":
     # Iniciar servidor web para que Render vea el puerto 8080
     Thread(target=run_web).start()
     # Iniciar bot asíncrono
     asyncio.run(main_loop())
+
 
 
 
