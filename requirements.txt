@@ -1,9 +1,11 @@
-python-telegram-bot
 yfinance
 pandas
 pandas_ta
-matplotlib
 scikit-learn
-textblob
 requests
-Flask
+matplotlib
+python-telegram-bot
+flask
+textblob
+pytz
+holidays
