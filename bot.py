@@ -25,7 +25,7 @@ bot = Bot(token=TOKEN)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- ACTIVOS ---
-CRYPTO = [("BTC-USD", "Bitcoin"), ("ETH-USD", "Ethereum"), ("SOL-USD", "Solana"), ("LINK-USD", "Chainlink")]
+CRYPTO = [("BTC-USD", "Bitcoin"), ("ETH-USD", "Ethereum"), ("SOL-USD", "Solana")]
 COMMODITIES = [("GC=F", "Oro"), ("CL=F", "Petróleo")]
 STOCKS = [("EC", "Ecopetrol")]
 
@@ -50,27 +50,14 @@ async def verificar_resultados_db():
             df = yf.download(s["ticker"], period="1d", interval="15m", progress=False)
             if not df.empty:
                 precio_actual = float(df['Close'].iloc[-1])
-                # Criterio simple: si subió es GANADA
                 resultado = "GANADA" if precio_actual > s["precio_entrada"] else "PERDIDA"
                 supabase.table("señales").update({
                     "resultado": resultado, 
                     "evaluada": True
                 }).eq("id", s["id"]).execute()
+            await asyncio.sleep(5) # Evitar rate limit al verificar
     except Exception as e:
         print(f"Error verificación: {e}")
-
-async def generar_reporte_semanal():
-    res = supabase.table("señales").select("*").not_.is_("resultado", "null").execute()
-    señales = res.data
-    if not señales: return "📊 Aún no hay historial suficiente para el reporte."
-
-    ganadas = sum(1 for s in señales if s["resultado"] == "GANADA")
-    win_rate = (ganadas / len(señales)) * 100
-    return (f"📊 **REPORTE DE PRECISIÓN SEMANAL**\n"
-            f"📈 Win Rate: {win_rate:.1f}%\n"
-            f"✅ Ganadas: {ganadas}\n"
-            f"❌ Perdidas: {len(señales)-ganadas}\n"
-            f"Total analizadas: {len(señales)}")
 
 # =================================================================
 # 🧠 INTELIGENCIA ARTIFICIAL (ML)
@@ -78,6 +65,7 @@ async def generar_reporte_semanal():
 
 async def procesar_activo(ticker, nombre):
     try:
+        # Descarga con prepost=True para capturar movimientos fuera de hora
         df = yf.download(ticker, period='5d', interval='15m', prepost=True, progress=False)
         if len(df) < 30: return
 
@@ -100,13 +88,13 @@ async def procesar_activo(ticker, nombre):
             guardar_señal_db(ticker, precio)
             
             msg = (f"🚀 **SEÑAL DETECTADA**\n"
-                   f"Activo: `{ticker}`\n"
+                   f"Activo: `{ticker}` ({nombre})\n"
                    f"IA Prob: {prob:.1%}\n"
                    f"Volumen: {vol_rel:.1f}x\n"
                    f"Precio: ${precio:.2f}")
             await bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode='Markdown')
-    except:
-        pass
+    except Exception as e:
+        print(f"Error procesando {ticker}: {e}")
 
 # =================================================================
 # 🚀 BUCLE PRINCIPAL
@@ -117,35 +105,31 @@ async def main_loop():
         print("Iniciando escaneo...")
         for ticker, nombre in CRYPTO + COMMODITIES + STOCKS:
             await procesar_activo(ticker, nombre)
-            await asyncio.sleep(2)
+            await asyncio.sleep(10) # ESPERA DE 10s ENTRE ACTIVOS (ANTI-BLOQUEO)
 
-        # Verificar si señales pasadas ya cerraron
+        # Verificar resultados de señales previas
         await verificar_resultados_db()
 
         # --- FUNCIÓN HEARTBEAT (AVISO DE VIDA) ---
         tz_col = pytz.timezone('America/Bogota')
         ahora_col = datetime.now(tz_col).strftime("%H:%M")
-        await bot.send_message(
-            chat_id=CHAT_ID, 
-            text=f"✅ **Ciclo completado** ({ahora_col})\nStatus: Buscando señales...",
-            parse_mode='Markdown'
-        )
-
-        # Reporte semanal (Domingos 8 PM Col)
-        ahora = datetime.now(tz_col)
-        if ahora.weekday() == 6 and ahora.hour == 20 and ahora.minute < 30:
-            reporte = await generar_reporte_semanal()
-            await bot.send_message(chat_id=CHAT_ID, text=reporte, parse_mode='Markdown')
-            await asyncio.sleep(2000)
+        try:
+            await bot.send_message(
+                chat_id=CHAT_ID, 
+                text=f"✅ **Ciclo completado** ({ahora_col})\nStatus: Buscando señales...",
+                parse_mode='Markdown'
+            )
+        except: pass
 
         # Auto-Ping para Render
         if RENDER_APP_URL:
             try: requests.get(RENDER_APP_URL)
             except: pass
 
-        await asyncio.sleep(900) # Esperar 15 min
+        print("Escaneo finalizado. Esperando 20 minutos...")
+        await asyncio.sleep(1200) # ESPERA DE 20 MINUTOS ENTRE CICLOS
 
-# --- SERVIDOR WEB ---
+# --- SERVIDOR WEB PARA RENDER ---
 app = Flask('')
 @app.route('/')
 def home(): return "INVESTFRED AI - LIVE"
