@@ -9,3 +9,6 @@ flask
 textblob
 pytz
 holidays
+supabase
+postgrest
+
