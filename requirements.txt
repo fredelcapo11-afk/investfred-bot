@@ -9,3 +9,4 @@ flask
 pytz
 holidays
 textblob
+gunicorn
