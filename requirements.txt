@@ -1,27 +1,11 @@
-setuptools>=70.0.0
-wheel>=0.43.0
-
-# Core
-pandas==2.0.0
-numpy==1.24.4
-yfinance==0.2.28
-pandas-ta==0.4.71b0
-
-# ML (versión más ligera SIN PyTorch)
-scikit-learn==1.0.2
-
-# Web/Async
-Flask==3.0.0
-python-telegram-bot==20.6
-
-# Utilidades
-requests==2.31.0
-textblob==0.17.1
-pytz==2023.3
-holidays==0.29
-gunicorn==21.2.0
-schedule==1.2.0
-feedparser==6.0.10
-
-# PyTorch CPU (para evitar el error)
-torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+yfinance
+pandas
+pandas_ta
+scikit-learn
+supabase
+python-telegram-bot
+requests
+flask
+pytz
+holidays
+textblob
