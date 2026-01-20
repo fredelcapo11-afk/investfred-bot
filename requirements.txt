@@ -1,13 +1,9 @@
 yfinance
-pandas
 pandas_ta
-scikit-learn
-supabase
 python-telegram-bot
-requests
+matplotlib
+scikit-learn
 flask
-pytz
-holidays
 textblob
-
-
+requests
+pandas
