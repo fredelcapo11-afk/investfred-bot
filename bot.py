@@ -9,16 +9,16 @@ from sklearn.ensemble import RandomForestClassifier
 from flask import Flask
 from threading import Thread
 from textblob import TextBlob
-from supabase import create_client, Client
+import warnings
+
+warnings.filterwarnings("ignore")
 
 # --- CONFIGURACIÓN ---
 TOKEN = os.getenv('telegram_token')
 CHAT_ID = os.getenv('chat_ID')
-SUPABASE_URL = os.getenv('SUPABASE_URL')
-SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+FMP_API_KEY = os.getenv('fmp_api_key')
 
 bot = Bot(token=TOKEN)
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # TUS ACTIVOS ORIGINALES
 CRYPTO_ACTIVOS = [
@@ -26,12 +26,24 @@ CRYPTO_ACTIVOS = [
     ("ADA-USD", "Cardano"), ("SOL-USD", "Solana"), ("LINK-USD", "Chainlink"),
     ("AAVE-USD", "Aave"), ("MKR-USD", "MakerDAO"), ("COMP-USD", "Compound"), ("SNX-USD", "Synthetix")
 ]
-COMMODITIES_ACTIVOS = [("GC=F", "Oro"), ("SI=F", "Plata"), ("CL=F", "Petróleo")]
+COMMODITIES_ACTIVOS = [
+    ("GC=F", "Oro"), ("SI=F", "Plata"), ("HG=F", "Cobre"),
+    ("CL=F", "Petróleo Crudo"), ("NG=F", "Gas Natural"), ("PA=F", "Paladio")
+]
 
-async def procesar_activo(ticker, nombre):
+def obtener_sentimiento(ticker):
+    if not FMP_API_KEY: return 0
+    try:
+        url = f"https://financialmodelingprep.com/api/v3/stock_news?tickers={ticker}&limit=3&apikey={FMP_API_KEY}"
+        res = requests.get(url, timeout=5).json()
+        if not res or not isinstance(res, list): return 0
+        return (sum(TextBlob(n.get('title', '')).sentiment.polarity for n in res) / 3) * 0.1
+    except: return 0
+
+async def procesar_activo(ticker, nombre, umbral=0.70):
     try:
         # Descarga de datos
-        df = yf.download(ticker, period='10d', interval='60m', progress=False)
+        df = yf.download(ticker, period='12d', interval='60m', progress=False)
         if df.empty or len(df) < 25: return
 
         df['RSI'] = ta.rsi(df['Close'], length=14)
@@ -44,40 +56,52 @@ async def procesar_activo(ticker, nombre):
         model = RandomForestClassifier(n_estimators=50, random_state=42)
         model.fit(X[:-1], y[:-1])
         
-        prob_final = model.predict_proba(X.tail(1))[:, 1][0]
+        prob_base = model.predict_proba(X.tail(1))[:, 1][0]
+        prob_final = prob_base + obtener_sentimiento(ticker)
 
-        # LÓGICA 70%
-        if prob_final >= 0.70:
+        # LÓGICA DEL 70%
+        if prob_final >= umbral:
             precio = float(df['Close'].iloc[-1])
+            msg = (f"🚨 **SEÑAL 70% DETECTADA**\n"
+                   f"Activo: `{nombre}` ({ticker})\n"
+                   f"Probabilidad: {prob_final:.1%}\n"
+                   f"Precio Actual: ${precio:.2f}")
+            await bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode='Markdown')
+            print(f"Señal enviada para {ticker}")
             
-            # GUARDAR EN DB (Solo inserción para evitar error JSON)
-            try:
-                supabase.table("señales").insert({
-                    "ticker": ticker, "precio_entrada": precio, "probabilidad": float(prob_final)
-                }).execute()
-            except: pass
-            
-            await bot.send_message(chat_id=CHAT_ID, text=f"🚨 **SEÑAL 70%**\nActivo: {nombre}\nProb: {prob_final:.1%}\nPrecio: ${precio:.2f}", parse_mode='Markdown')
     except Exception as e:
-        print(f"Error en {ticker}: {e}")
+        print(f"Error procesando {ticker}: {e}")
 
 async def main_loop():
     while True:
-        print("Iniciando escaneo...")
-        for t, n in CRYPTO_ACTIVOS + COMMODITIES_ACTIVOS:
+        print(f"Iniciando escaneo: {datetime.now()}")
+        
+        # Combinamos tus activos
+        todos_los_activos = CRYPTO_ACTIVOS + COMMODITIES_ACTIVOS
+        
+        for t, n in todos_los_activos:
             await procesar_activo(t, n)
-            await asyncio.sleep(15) # Pausa para evitar Rate Limit Error
+            # Pausa de 15 seg para evitar el error de "Too Many Requests"
+            await asyncio.sleep(15) 
 
-        await bot.send_message(chat_id=CHAT_ID, text="✅ Ciclo completado. Esperando 1 hora.")
+        # Mensaje de vida del bot
+        try:
+            await bot.send_message(chat_id=CHAT_ID, text="✅ Ciclo completado con éxito. Próximo escaneo en 1 hora.")
+        except: pass
+
+        print("Esperando 1 hora para el siguiente ciclo...")
         await asyncio.sleep(3600)
 
+# Servidor Flask básico para Render
 app = Flask('')
 @app.route('/')
-def home(): return "BOT ACTIVE"
+def home(): return "INVESTFRED AI - SIN BASE DE DATOS - ACTIVO"
 
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
 
 if __name__ == "__main__":
+    # Iniciar servidor web en segundo plano
     Thread(target=run_flask).start()
+    # Iniciar el bucle del bot
     asyncio.run(main_loop())
