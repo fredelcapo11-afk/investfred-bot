@@ -1,13 +1,29 @@
 services:
-  - type: worker
+  - type: web
     name: investfred-bot
     env: python
+    region: oregon  # o virginia, frankfurt, etc.
+    plan: free  # Gratis (con limitaciones) o starter ($7/mes)
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot_mejorado.py
-    plan: free
+    startCommand: python investfred_bot.py
     envVars:
-      - key: RENDER
-        value: true
-      - key: PYTHONUNBUFFERED
-        value: "1"
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: CHAT_ID
+        sync: false
+      - key: FMP_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+    healthCheckPath: /
     autoDeploy: true
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
