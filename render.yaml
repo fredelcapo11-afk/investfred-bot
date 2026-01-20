@@ -2,35 +2,14 @@ services:
   - type: web
     name: investfred-bot
     env: python
-    region: oregon
-    plan: free
-    buildCommand: |
-      pip install --upgrade pip setuptools wheel
-      pip install --no-cache-dir -r requirements.txt
-    startCommand: |
-      if [ "$RENDER" = "true" ]; then
-        gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1 &
-        python investfred_bot.py
-      else
-        python investfred_bot.py
-      fi
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: RENDER
-        value: true
-      - key: TELEGRAM_TOKEN
+      - key: telegram_token
         sync: false
-      - key: CHAT_ID
+      - key: chat_ID
         sync: false
-      - key: FMP_API_KEY
+      - key: fmp_api_key
         sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
-        sync: false
-    healthCheckPath: /health
-    healthCheckTimeout: 30
+    healthCheckPath: /
     autoDeploy: true
