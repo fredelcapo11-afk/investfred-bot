@@ -23,7 +23,7 @@ bot = Bot(token=TOKEN)
 # TUS ACTIVOS ORIGINALES
 CRYPTO_ACTIVOS = [
     ("BTC-USD", "Bitcoin"), ("ETH-USD", "Ethereum"), ("BNB-USD", "Binance Coin"),
-    ("ADA-USD", "Cardano"), ("SOL-USD", "Solana"), ("NEAR-USD", "NEAR Protocol"), ("SNX-USD", "Synthetix"), ("RIO-usd", "Realio Network)
+    ("ADA-USD", "Cardano"), ("SOL-USD", "Solana"), ("NEAR-USD", "NEAR Protocol"), ("SNX-USD", "Synthetix"), ("RIO-usd", "Realio Network")
 ]
 COMMODITIES_ACTIVOS = [
     ("GC=F", "Oro"), ("SI=F", "Plata"), ("HG=F", "Cobre"),
@@ -104,4 +104,5 @@ if __name__ == "__main__":
     Thread(target=run_flask).start()
     # Iniciar el bucle del bot
     asyncio.run(main_loop())
+
 
