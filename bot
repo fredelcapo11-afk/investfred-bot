@@ -1,0 +1,140 @@
+import yfinance as yf
+import pandas_ta as ta
+import asyncio
+import os
+import requests
+from telegram import Bot
+from datetime import datetime
+from sklearn.ensemble import RandomForestClassifier
+from flask import Flask
+from threading import Thread
+from textblob import TextBlob
+import pytz
+import holidays
+from supabase import create_client, Client
+import warnings
+
+warnings.filterwarnings("ignore")
+
+# --- CONFIGURACIÓN ---
+TOKEN = os.getenv('telegram_token')
+CHAT_ID = os.getenv('chat_ID')
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+FMP_API_KEY = os.getenv('fmp_api_key')
+RENDER_APP_URL = os.getenv('RENDER_EXTERNAL_URL')
+
+bot = Bot(token=TOKEN)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# --- LISTA DE ACTIVOS ORIGINALES (RESTAURADA) ---
+CRYPTO_ACTIVOS = [
+    ("BTC-USD", "Bitcoin"), ("ETH-USD", "Ethereum"), ("BNB-USD", "Binance Coin"),
+    ("ADA-USD", "Cardano"), ("SOL-USD", "Solana"), ("LINK-USD", "Chainlink"),
+    ("AAVE-USD", "Aave"), ("MKR-USD", "MakerDAO"), ("COMP-USD", "Compound"), ("SNX-USD", "Synthetix")
+]
+
+COMMODITIES_ACTIVOS = [
+    ("GC=F", "Oro"), ("SI=F", "Plata"), ("HG=F", "Cobre"),
+    ("CL=F", "Petróleo Crudo"), ("NG=F", "Gas Natural"), ("PA=F", "Paladio")
+]
+
+COLOMBIAN_ACTIVOS = [("EC", "Ecopetrol"), ("ISA", "Interconexión Eléctrica")]
+
+ETF_ACTIVOS = [("XLF", "Financial Select Sector SPDR")]
+
+# --- LÓGICA DE HORARIOS ---
+class HorarioBursatil:
+    def __init__(self):
+        self.ny_tz = pytz.timezone('America/New_York')
+        self.us_holidays = holidays.US()
+    
+    def es_horario_ny(self):
+        ahora_ny = datetime.now(self.ny_tz)
+        if ahora_ny.weekday() >= 5 or ahora_ny.date() in self.us_holidays:
+            return False
+        return '09:30' <= ahora_ny.strftime('%H:%M') <= '16:00'
+
+horario = HorarioBursatil()
+
+# --- FUNCIONES DE APOYO ---
+def obtener_sentimiento(ticker):
+    if not FMP_API_KEY: return 0
+    try:
+        url = f"https://financialmodelingprep.com/api/v3/stock_news?tickers={ticker}&limit=5&apikey={FMP_API_KEY}"
+        res = requests.get(url, timeout=5).json()
+        if not res: return 0
+        return (sum(TextBlob(n['title']).sentiment.polarity for n in res) / 5) * 0.1
+    except: return 0
+
+async def procesar_activo(ticker, nombre, umbral=0.70):
+    try:
+        df = yf.download(ticker, period='10d', interval='30m', prepost=True, progress=False)
+        if len(df) < 30: return
+
+        df['RSI'] = ta.rsi(df['Close'], length=14)
+        df['Target'] = (df['Close'].shift(-4) > df['Close']).astype(int)
+        df = df.dropna()
+
+        X = df[['Close', 'RSI']].tail(25)
+        y = df['Target'].tail(25)
+        
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model.fit(X[:-1], y[:-1])
+        
+        prob_base = model.predict_proba(X.tail(1))[:, 1][0]
+        prob_final = prob_base + obtener_sentimiento(ticker)
+
+        if prob_final >= umbral:
+            precio = float(df['Close'].iloc[-1])
+            # Guardar en Supabase
+            supabase.table("señales").insert({
+                "ticker": ticker, "precio_entrada": precio, "probabilidad": prob_final, "evaluada": False
+            }).execute()
+            
+            msg = (f"🚨 **SEÑAL 70% DETECTADA**\n"
+                   f"Activo: `{ticker}` ({nombre})\n"
+                   f"Probabilidad: {prob_final:.1%}\n"
+                   f"Precio: ${precio:.2f}")
+            await bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode='Markdown')
+    except Exception as e:
+        print(f"Error en {ticker}: {e}")
+
+# --- BUCLE PRINCIPAL ---
+async def main_loop():
+    while True:
+        # 1. Criptos (24/7)
+        for t, n in CRYPTO_ACTIVOS:
+            await procesar_activo(t, n)
+            await asyncio.sleep(5)
+
+        # 2. Mercados Tradicionales (Si NY está abierto)
+        if horario.es_horario_ny():
+            for t, n in COMMODITIES_ACTIVOS + COLOMBIAN_ACTIVOS + ETF_ACTIVOS:
+                await procesar_activo(t, n)
+                await asyncio.sleep(5)
+
+        # Heartbeat de confirmación
+        tz_col = pytz.timezone('America/Bogota')
+        ahora = datetime.now(tz_col).strftime("%H:%M")
+        try:
+            await bot.send_message(chat_id=CHAT_ID, text=f"✅ Ciclo 70% completado ({ahora})\nAnalizados {len(CRYPTO_ACTIVOS)} activos cripto.")
+        except: pass
+
+        if RENDER_APP_URL:
+            try: requests.get(RENDER_APP_URL)
+            except: pass
+
+        await asyncio.sleep(1800) # Espera 30 min
+
+app = Flask('')
+@app.route('/')
+def home(): return "INVESTFRED AI - 70% ACTIVE"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+
+if __name__ == "__main__":
+    Thread(target=run_flask).start()
+    asyncio.run(main_loop())
+
