@@ -1,10 +1,8 @@
-yfinance
-pandas_ta
-python-telegram-bot
+pandas
+pandas-ta
+python-telegram-bot==13.15
 matplotlib
+requests
 scikit-learn
 flask
 textblob
-requests
-pandas
-
